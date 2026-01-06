@@ -86,7 +86,16 @@ namespace RemnantSaveGuardian
         /// </summary>
         private async void OnStartup(object sender, StartupEventArgs e)
         {
-            var culture = CultureInfo.GetCultureInfo(GetUserDefaultUILanguage());
+            CultureInfo culture;
+            try
+            {
+                culture = CultureInfo.GetCultureInfo(GetUserDefaultUILanguage());
+            }
+            catch (CultureNotFoundException)
+            {
+                // Wine/Proton may return invalid culture IDs
+                culture = CultureInfo.GetCultureInfo("en");
+            }
             var cultures = EnumerateSupportedCultures();
             Current.Properties["langs"] = cultures;
             if (!cultures.Contains(culture) && cultures.Contains(culture.Parent))
@@ -112,11 +121,30 @@ namespace RemnantSaveGuardian
 
         private CultureInfo[] EnumerateSupportedCultures()
         {
-            CultureInfo[] culture = CultureInfo.GetCultures(CultureTypes.AllCultures);
+            CultureInfo[] culture;
+            try
+            {
+                culture = CultureInfo.GetCultures(CultureTypes.AllCultures);
+            }
+            catch (CultureNotFoundException)
+            {
+                // Wine/Proton may report invalid culture names like "en-us-posix"
+                // Fall back to a safe list of cultures
+                culture = new[] { CultureInfo.InvariantCulture, CultureInfo.GetCultureInfo("en") };
+            }
 
             string exeLocation = Path.GetDirectoryName(Uri.UnescapeDataString(new UriBuilder(Assembly.GetExecutingAssembly().CodeBase).Path)) ?? "";
 
-            var c = culture.Where(cultureInfo => Directory.Exists(Path.Combine(exeLocation, cultureInfo.Name)) && cultureInfo.Name != "")
+            var c = culture.Where(cultureInfo => {
+                    try
+                    {
+                        return Directory.Exists(Path.Combine(exeLocation, cultureInfo.Name)) && cultureInfo.Name != "";
+                    }
+                    catch
+                    {
+                        return false;
+                    }
+                })
                 .Prepend(CultureInfo.GetCultureInfo("en"))
                 .ToArray();
 
